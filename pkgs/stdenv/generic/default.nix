@@ -77,6 +77,10 @@ let
 
   defaultBuildInputs = extraBuildInputs;
 
+  # Prevent autotools from inferring the current platform
+  # Weird to avoid mass rebuild on platforms that don't need this
+  builder = if hostPlatform.system == "armv6l-linux" then ./builder-build-alias.sh else ./builder.sh;
+
   # The stdenv that we are producing.
   stdenv =
     derivation (
@@ -98,7 +102,7 @@ let
 
       builder = shell;
 
-      args = ["-e" ./builder.sh];
+      args = ["-e" builder];
 
       setup = setupScript;
 
@@ -128,6 +132,10 @@ let
     // lib.optionalAttrs buildPlatform.isDarwin {
       __sandboxProfile = stdenvSandboxProfile;
       __impureHostDeps = __stdenvImpureHostDeps;
+    }
+    // lib.optionalAttrs (hostPlatform.system == "armv6l-linux") {
+      # Prevent autotools from inferring the current platform
+      build_alias = buildPlatform.config;
     })
 
     // {
