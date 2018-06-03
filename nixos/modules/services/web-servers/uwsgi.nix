@@ -13,8 +13,8 @@ let
     let
       plugins =
         if any (n: !any (m: m == n) cfg.plugins) (c.plugins or [])
-        then throw "`plugins` attribute in UWSGI configuration contains plugins not in config.services.uwsgi.plugins"
-        else c.plugins or cfg.plugins;
+        then throw "`plugins` attribute in uWSGI configuration contains plugins not in config.services.uwsgi.plugins"
+        else c.plugins;
 
       hasPython = v: filter (n: n == "python${v}") plugins != [];
       hasPython2 = hasPython "2";
@@ -22,7 +22,7 @@ let
 
       python =
         if hasPython2 && hasPython3 then
-          throw "`plugins` attribute in UWSGI configuration shouldn't contain both python2 and python3"
+          throw "`plugins` attribute in uWSGI configuration shouldn't contain both python2 and python3"
         else if hasPython2 then uwsgi.python2
         else if hasPython3 then uwsgi.python3
         else null;
@@ -31,40 +31,87 @@ let
 
       uwsgiCfg = {
         uwsgi =
-          if c.type == "normal"
+          if c.type or "normal" == "normal"
             then {
               inherit plugins;
-            } // removeAttrs c [ "type" "pythonPackages" ]
-              // optionalAttrs (python != null) {
-                pythonpath = "${pythonEnv}/${python.sitePackages}";
-                env =
-                  # Argh, uwsgi expects list of key-values there instead of a dictionary.
-                  let env' = c.env or [];
-                      getPath =
-                        x: if hasPrefix "PATH=" x
-                           then substring (stringLength "PATH=") (stringLength x) x
-                           else null;
-                      oldPaths = filter (x: x != null) (map getPath env');
-                  in env' ++ [ "PATH=${optionalString (oldPaths != []) "${last oldPaths}:"}${pythonEnv}/bin" ];
-              }
+              env = mapAttrsToList (name: value: "${name}=${value}") ({
+                PATH = c.path + optionalString (python != null) ":${pythonEnv}/bin";
+              } // c.env);
+            } // optionalAttrs (python != null) {
+              pyhome = pythonEnv;
+            } // c.extraConfig
           else if c.type == "emperor"
             then {
-              emperor = if builtins.typeOf c.vassals != "set" then c.vassals
-                        else pkgs.buildEnv {
-                          name = "vassals";
-                          paths = mapAttrsToList buildCfg c.vassals;
-                        };
-            } // removeAttrs c [ "type" "vassals" ]
-          else throw "`type` attribute in UWSGI configuration should be either 'normal' or 'emperor'";
+              emperor = c.vassalsDir;
+              vassals-include-before = buildCfg "vassals-default" (c // {
+                type = "normal";
+                extraConfig = c.vassalsConfig;
+              });
+            } // c.extraConfig
+          else throw "`type` attribute in uWSGI configuration should be either 'normal' or 'emperor'";
       };
 
-    in pkgs.writeTextDir "${name}.json" (builtins.toJSON uwsgiCfg);
+    in pkgs.writeText "${name}.json" (builtins.toJSON uwsgiCfg);
+
+    commonOptions = {
+      pythonPackages = mkOption {
+        default = self: [];
+        defaultText = "self: []";
+        description = ''
+          Python packages to make available to the uWSGI app. This
+          option is ignored unless the <literal>python2</literal> or
+          <literal>python3</literal> plugin is enabled. In emperor mode,
+          these packages will be made available to all vassals.
+        '';
+        example = literalExample "self: with self; [ flask ]";
+      };
+
+      path = mkOption {
+        type = types.listOf types.path;
+        default = [];
+        apply = ps: "${makeSearchPath "bin" ps}:${makeSearchPath "sbin" ps}";
+        description = ''
+          Packages added to the <envar>PATH</envar> environment variable.
+          Both the <filename>bin</filename> and <filename>sbin</filename>
+          subdirectories of each package are added. In emperor mode, these
+          packages will be made available to all vassals.
+        '';
+      };
+
+      env = mkOption {
+        type = types.attrs;
+        default = {};
+        description = ''
+          Environment variables to set. If the <envar>PATH</envar>
+          variable is specified in this option, it will override the
+          <literal>path</literal> option. In emperor mode, these variables
+          will be inherited by all vassals.
+        '';
+        example = {
+          APPLICATION_SETTINGS = "/var/lib/application.settings";
+        };
+      };
+
+      extraConfig = mkOption {
+        type = types.attrs;
+        default = {};
+        description = ''
+          Extra configuration options for uWSGI. In emperor mode, these
+          options will apply to the emperor configuration, not the vassals. Use
+          <literal>vassalsConfig</literal> to apply default configuration
+          to each vassal.
+
+          This option can be used to override uWSGI options that
+          were automatically set by higher level options such as
+          <literal>pythonPackages</literal> or <literal>env</literal>.
+        '';
+      };
+    };
 
 in {
 
   options = {
-    services.uwsgi = {
-
+    services.uwsgi = commonOptions // {
       enable = mkOption {
         type = types.bool;
         default = false;
@@ -77,35 +124,45 @@ in {
         description = "Where uWSGI communication sockets can live";
       };
 
-      instance = mkOption {
-        type = types.attrs;
-        default = {
-          type = "normal";
-        };
+      type = mkOption {
+        type = types.enum [ "normal" "emperor" ];
+        default = "normal";
+        description = ''
+          Controls the operating mode for uWSGI, which can be either
+          <literal>normal</literal> or <literal>emperor</literal>. In
+          <literal>normal</literal> mode, a single app can be configured. In
+          <literal>emperor</literal> mode, multiple apps can be configured
+          using the <literal>vassals</literal> option.
+        '';
+      };
+
+      vassals = mkOption {
+        type = types.attrsOf (types.submodule {
+          options = commonOptions // {
+            plugins = mkOption {
+              type = types.listOf types.str;
+              default = cfg.plugins;
+              description = ''
+                Plugins used by this vassal. Must be a subset of the
+                top-level plugins.
+              '';
+            };
+          };
+        });
+        default = {};
         example = literalExample ''
           {
-            type = "emperor";
-            vassals = {
-              moin = {
-                type = "normal";
-                pythonPackages = self: with self; [ moinmoin ];
-                socket = "${config.services.uwsgi.runDir}/uwsgi.sock";
-              };
+            moin = {
+              pythonPackages = self: with self; [ moinmoin ];
+              extraConfig = '''
+                socket = "''${config.services.uwsgi.runDir}/uwsgi.sock";
+              '''
             };
           }
         '';
         description = ''
-          uWSGI configuration. It awaits an attribute <literal>type</literal> inside which can be either
-          <literal>normal</literal> or <literal>emperor</literal>.
-
-          For <literal>normal</literal> mode you can specify <literal>pythonPackages</literal> as a function
-          from libraries set into a list of libraries. <literal>pythonpath</literal> will be set accordingly.
-
-          For <literal>emperor</literal> mode, you should use <literal>vassals</literal> attribute
-          which should be either a set of names and configurations or a path to a directory.
-
-          Other attributes will be used in configuration file as-is. Notice that you can redefine
-          <literal>plugins</literal> setting here.
+          In emperor mode, this option defines the vassals to spawn. This
+          option is ignored in normal mode.
         '';
       };
 
@@ -115,18 +172,41 @@ in {
         description = "Plugins used with uWSGI";
       };
 
+      vassalsDir = mkOption {
+        type = types.path;
+        default = pkgs.linkFarm "vassals" (mapAttrsToList (name: c: {
+          name = "${name}.json";
+          path = buildCfg name c;
+        }) cfg.vassals);
+        description = ''
+          Directory containing vassal configuration files. By default,
+          this is populated by the <literal>vassals</literal> option. This
+          option is ignored in normal mode.
+        '';
+      };
+
+      vassalsConfig = mkOption {
+         type = types.attrs;
+         default = {};
+         description = ''
+           Extra configuration passed to each vassal, using the
+           <literal>vassals-include-before</literal> uWSGI option. This
+           option is ignored in normal mode.
+         '';
+      };
+
       user = mkOption {
         type = types.str;
         default = "uwsgi";
-        description = "User account under which uwsgi runs.";
+        description = "User account under which uWSGI runs.";
       };
 
       group = mkOption {
         type = types.str;
         default = "uwsgi";
-        description = "Group account under which uwsgi runs.";
+        description = "Group account under which uWSGI runs.";
       };
-    };
+    } // commonOptions;
   };
 
   config = mkIf cfg.enable {
@@ -138,7 +218,7 @@ in {
       '';
       serviceConfig = {
         Type = "notify";
-        ExecStart = "${uwsgi}/bin/uwsgi --uid ${cfg.user} --gid ${cfg.group} --json ${buildCfg "server" cfg.instance}/server.json";
+        ExecStart = "${uwsgi}/bin/uwsgi --uid ${cfg.user} --gid ${cfg.group} --json ${buildCfg "server" cfg}";
         ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
         ExecStop = "${pkgs.coreutils}/bin/kill -INT $MAINPID";
         NotifyAccess = "main";
