@@ -252,6 +252,15 @@ let
         localSystem = lib.systems.elaborate "${stdenv.hostPlatform.parsed.cpu.name}-linux";
       };
 
+    forceCross = system: crossSystem: nixpkgsFun {
+      localSystem = system;
+      inherit crossSystem;
+    };
+
+    customSystem = system: nixpkgsFun {
+      localSystem = system;
+    };
+
     # Extend the package set with zero or more overlays. This preserves
     # preexisting overlays. Prefer to initialize with the right overlays
     # in one go when calling Nixpkgs, for performance and simplicity.
