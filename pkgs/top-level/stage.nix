@@ -245,6 +245,15 @@ let
         gcc.abi = "elfv2";
       };
     });
+
+    forceCross = system: crossSystem: nixpkgsFun {
+      localSystem = system;
+      inherit crossSystem;
+    };
+
+    customSystem = system: nixpkgsFun {
+      localSystem = system;
+    };
   };
 
   # The complete chain of package set builders, applied from top to bottom.
