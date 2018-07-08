@@ -206,6 +206,15 @@ let
       };
     } else throw "i686 Linux package set can only be used with the x86 family.";
 
+    forceCross = system: crossSystem: nixpkgsFun {
+      localSystem = system;
+      inherit crossSystem;
+    };
+
+    customSystem = system: nixpkgsFun {
+      localSystem = system;
+    };
+
     # Extend the package set with zero or more overlays. This preserves
     # preexisting overlays. Prefer to initialize with the right overlays
     # in one go when calling Nixpkgs, for performance and simplicity.
