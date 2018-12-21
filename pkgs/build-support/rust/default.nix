@@ -1,4 +1,4 @@
-{ stdenv, cacert, git, cargo, rustc, fetchcargo, buildPackages, windows }:
+{ stdenv, cacert, git, rust, cargo, rustc, fetchcargo, buildPackages, windows }:
 
 { name ? "${args.pname}-${args.version}"
 , cargoSha256 ? "unset"
@@ -41,17 +41,11 @@ let
       cargoDepsCopy="$sourceRoot/${cargoVendorDir}"
     '';
 
-  hostConfig = stdenv.hostPlatform.config;
-
-  rustHostConfig = {
-    "x86_64-pc-mingw32" = "x86_64-pc-windows-gnu";
-  }."${hostConfig}" or hostConfig;
-
   ccForBuild="${buildPackages.stdenv.cc}/bin/${buildPackages.stdenv.cc.targetPrefix}cc";
   cxxForBuild="${buildPackages.stdenv.cc}/bin/${buildPackages.stdenv.cc.targetPrefix}c++";
   ccForHost="${stdenv.cc}/bin/${stdenv.cc.targetPrefix}cc";
   cxxForHost="${stdenv.cc}/bin/${stdenv.cc.targetPrefix}c++";
-  releaseDir = "target/${rustHostConfig}/${buildType}";
+  releaseDir = "target/${rust.rustConfig stdenv.hostPlatform}/${buildType}";
 in
 
 stdenv.mkDerivation (args // {
@@ -81,10 +75,10 @@ stdenv.mkDerivation (args // {
       --subst-var-by vendor "$(pwd)/$cargoDepsCopy"
 
     cat >> .cargo/config <<'EOF'
-    [target."${stdenv.buildPlatform.config}"]
+    [target."${rust.rustConfig stdenv.buildPlatform}"]
     "linker" = "${ccForBuild}"
     ${stdenv.lib.optionalString (stdenv.buildPlatform.config != stdenv.hostPlatform.config) ''
-    [target."${rustHostConfig}"]
+    [target."${rust.rustConfig stdenv.hostPlatform}"]
     "linker" = "${ccForHost}"
     ''}
     EOF
@@ -104,13 +98,13 @@ stdenv.mkDerivation (args // {
     (
     set -x
     env \
-      "CC_${stdenv.buildPlatform.config}"="${ccForBuild}" \
-      "CXX_${stdenv.buildPlatform.config}"="${cxxForBuild}" \
-      "CC_${stdenv.hostPlatform.config}"="${ccForHost}" \
-      "CXX_${stdenv.hostPlatform.config}"="${cxxForHost}" \
+      "CC_${rust.rustConfig stdenv.buildPlatform}"="${ccForBuild}" \
+      "CXX_${rust.rustConfig stdenv.buildPlatform}"="${cxxForBuild}" \
+      "CC_${rust.rustConfig stdenv.hostPlatform}"="${ccForHost}" \
+      "CXX_${rust.rustConfig stdenv.hostPlatform}"="${cxxForHost}" \
       cargo build \
         ${stdenv.lib.optionalString (buildType == "release") "--release"} \
-        --target ${rustHostConfig} \
+        --target ${rust.rustConfig stdenv.hostPlatform} \
         --frozen ${concatStringsSep " " cargoBuildFlags}
     )
 

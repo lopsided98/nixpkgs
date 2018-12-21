@@ -5,6 +5,12 @@
 , llvmPackages_5
 , pkgsBuildTarget, pkgsBuildBuild
 }: rec {
+  rustConfig = platform: {
+    "armv6l-unknown-linux-gnueabihf" = "arm-unknown-linux-gnueabihf";
+    "armv7l-unknown-linux-gnueabihf" = "armv7-unknown-linux-gnueabihf";
+    "x86_64-pc-mingw32" = "x86_64-pc-windows-gnu";
+  }.${platform.config} or platform.config;
+
   makeRustPlatform = { rustc, cargo, ... }: {
     rust = {
       inherit rustc cargo;

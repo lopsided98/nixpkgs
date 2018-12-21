@@ -1,6 +1,6 @@
 { stdenv, removeReferencesTo, pkgsBuildBuild, pkgsBuildHost, pkgsBuildTarget
 , fetchurl, file, python2, tzdata, ps
-, llvmPackages_7, darwin, git, cmake, rustPlatform
+, llvmPackages_7, darwin, git, cmake, rust, rustPlatform
 , which, libffi, gdb
 , withBundledLLVM ? false
 }:
@@ -60,9 +60,9 @@ stdenv.mkDerivation rec {
   # We need rust to build rust. If we don't provide it, configure will try to download it.
   # Reference: https://github.com/rust-lang/rust/blob/master/src/bootstrap/configure.py
   configureFlags = let
-    setBuild  = "--set=target.${stdenv.buildPlatform.config}";
-    setHost   = "--set=target.${stdenv.hostPlatform.config}";
-    setTarget = "--set=target.${stdenv.targetPlatform.config}";
+    setBuild  = "--set=target.${rust.rustConfig stdenv.buildPlatform}";
+    setHost   = "--set=target.${rust.rustConfig stdenv.hostPlatform}";
+    setTarget = "--set=target.${rust.rustConfig stdenv.targetPlatform}";
     ccForBuild  = "${pkgsBuildBuild.targetPackages.stdenv.cc}/bin/${pkgsBuildBuild.targetPackages.stdenv.cc.targetPrefix}cc";
     cxxForBuild = "${pkgsBuildBuild.targetPackages.stdenv.cc}/bin/${pkgsBuildBuild.targetPackages.stdenv.cc.targetPrefix}c++";
     ccForHost  = "${pkgsBuildHost.targetPackages.stdenv.cc}/bin/${pkgsBuildHost.targetPackages.stdenv.cc.targetPrefix}cc";
@@ -75,9 +75,9 @@ stdenv.mkDerivation rec {
     "--set=build.cargo=${rustPlatform.rust.cargo}/bin/cargo"
     "--enable-rpath"
     "--enable-vendor"
-    "--build=${stdenv.buildPlatform.config}"
-    "--host=${stdenv.hostPlatform.config}"
-    "--target=${stdenv.targetPlatform.config}"
+    "--build=${rust.rustConfig stdenv.buildPlatform}"
+    "--host=${rust.rustConfig stdenv.hostPlatform}"
+    "--target=${rust.rustConfig stdenv.targetPlatform}"
 
     "${setBuild}.cc=${ccForBuild}"
     "${setHost}.cc=${ccForHost}"
