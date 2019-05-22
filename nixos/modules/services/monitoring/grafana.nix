@@ -239,19 +239,19 @@ in {
     certFile = mkOption {
       description = "Cert file for ssl.";
       default = "";
-      type = types.str;
+      type = types.path;
     };
 
     certKey = mkOption {
       description = "Cert key for ssl.";
       default = "";
-      type = types.str;
+      type = types.path;
     };
 
     staticRootPath = mkOption {
       description = "Root path for static assets.";
       default = "${cfg.package}/share/grafana/public";
-      type = types.str;
+      type = types.path;
     };
 
     package = mkOption {
