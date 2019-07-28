@@ -1,10 +1,8 @@
-{ pkgs, configTxt }:
+{ lib, substituteAll, bash, coreutils, gnused }:
 
-pkgs.substituteAll {
+substituteAll {
   src = ./raspberrypi-builder.sh;
   isExecutable = true;
-  inherit (pkgs) bash;
-  path = [pkgs.coreutils pkgs.gnused pkgs.gnugrep];
-  firmware = pkgs.raspberrypifw;
-  inherit configTxt;
+  inherit bash;
+  path = lib.makeBinPath [ coreutils gnused ];
 }
