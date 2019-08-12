@@ -41,7 +41,10 @@ let
   libc_bin = if libc == null then null else getBin libc;
   libc_dev = if libc == null then null else getDev libc;
   libc_lib = if libc == null then null else getLib libc;
-  cc_solib = getLib cc;
+
+  ccLibDir = getLib cc
+    + optionalString (targetPlatform != hostPlatform) "/${targetPlatform.config}";
+
   # The wrapper scripts use 'cat' and 'grep', so we may need coreutils.
   coreutils_bin = if nativeTools then "" else getBin coreutils;
 
@@ -266,16 +269,16 @@ stdenv.mkDerivation {
       ## Initial CFLAGS
       ##
 
-      # GCC shows ${cc_solib}/lib in `gcc -print-search-dirs', but not
-      # ${cc_solib}/lib64 (even though it does actually search there...)..
+      # GCC shows ${ccLibDir}/lib in `gcc -print-search-dirs', but not
+      # ${ccLibDir}/lib64 (even though it does actually search there...)..
       # This confuses libtool.  So add it to the compiler tool search
       # path explicitly.
-      if [ -e "${cc_solib}/lib64" -a ! -L "${cc_solib}/lib64" ]; then
-        ccLDFlags+=" -L${cc_solib}/lib64"
-        ccCFlags+=" -B${cc_solib}/lib64"
+      if [ -e "${ccLibDir}/lib64" -a ! -L "${ccLibDir}/lib64" ]; then
+        ccLDFlags+=" -L${ccLibDir}/lib64"
+        ccCFlags+=" -B${ccLibDir}/lib64"
       fi
-      ccLDFlags+=" -L${cc_solib}/lib"
-      ccCFlags+=" -B${cc_solib}/lib"
+      ccLDFlags+=" -L${ccLibDir}/lib"
+      ccCFlags+=" -B${ccLibDir}/lib"
 
       echo "$ccLDFlags" > $out/nix-support/cc-ldflags
       echo "$ccCFlags" > $out/nix-support/cc-cflags

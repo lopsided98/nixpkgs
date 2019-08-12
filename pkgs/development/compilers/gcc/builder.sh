@@ -133,7 +133,7 @@ if test "$noSysDirs" = "1"; then
 
     if test "$crossStageStatic" == 1; then
         # We don't want the gcc build to assume there will be a libc providing
-        # limits.h in this stagae
+        # limits.h in this stage
         makeFlagsArray+=(
             'LIMITS_H_TEST=false'
         )
@@ -213,21 +213,21 @@ preInstall() {
 
 postInstall() {
     # Move runtime libraries to $lib.
-    moveToOutput "lib/lib*.so*" "$lib"
-    moveToOutput "lib/lib*.la"  "$lib"
-    moveToOutput "lib/lib*.dylib" "$lib"
+    moveToOutput "${targetConfig+$targetConfig/}lib/lib*.so*" "$lib"
+    moveToOutput "${targetConfig+$targetConfig/}lib/lib*.la"  "$lib"
+    moveToOutput "${targetConfig+$targetConfig/}lib/lib*.dylib" "$lib"
     moveToOutput "share/gcc-*/python" "$lib"
 
-    for i in "$lib"/lib/*.{la,py}; do
+    for i in "$lib/${targetConfig}"/lib/*.{la,py}; do
         substituteInPlace "$i" --replace "$out" "$lib"
     done
 
     if [ -n "$enableMultilib" ]; then
-        moveToOutput "lib64/lib*.so*" "$lib"
-        moveToOutput "lib64/lib*.la"  "$lib"
-        moveToOutput "lib64/lib*.dylib" "$lib"
+        moveToOutput "${targetConfig+$targetConfig/}lib64/lib*.so*" "$lib"
+        moveToOutput "${targetConfig+$targetConfig/}lib64/lib*.la"  "$lib"
+        moveToOutput "${targetConfig+$targetConfig/}lib64/lib*.dylib" "$lib"
 
-        for i in "$lib"/lib64/*.{la,py}; do
+        for i in "$lib/${targetConfig}"/lib64/*.{la,py}; do
             substituteInPlace "$i" --replace "$out" "$lib"
         done
     fi
