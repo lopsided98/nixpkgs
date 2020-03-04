@@ -1,0 +1,170 @@
+From 0ade6f64dd94ad06b71d743435005e7907395a37 Mon Sep 17 00:00:00 2001
+From: Matthew Bauer <mjbauer95@gmail.com>
+Date: Sun, 24 Feb 2019 01:30:55 -0500
+Subject: [PATCH] Add --whole-archive to include all store implementations
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When statically linking, symbols that are not referenced are not
+included in the final executable. Usually, this is an okay
+optimization, but sometimes can cause unexpected issues.
+
+In this case, statically linked Nix was not finding the
+HttpBinaryCacheStore class and the RegisterStoreImplementation that
+comes with it. This is because the resulting binary would not run all
+of the store registration at initialization time. Some of the store
+registrations were still heppning like in the S3 case, but only
+because another symbol in s3-binary-cache-store.o was being used
+elsewhere in Nix. This linking behavior caused static Nix to have
+errors like:
+
+  don't know how to open Nix store ‘https://...’
+
+Adding --whole-archive forces the linker to include these archives.
+This is just applied to the local Nix libraries, and not external
+libraries. As a side effect we might get some symbols that we don’t
+actually need, but that is the same case as with dynamically linked
+Nix.
+
+Handle Darwin linker as well
+
+I forgot to verify this on macOS. We need to use -Wl,-force_load here.
+
+Make --whole-archive optional for each library
+
+Set _WHOLE_ARCHIVE for libexpr, libfetchers
+
+These also need
+it:
+
+- https://github.com/NixOS/nix/pull/2698#issuecomment-612138993
+- https://github.com/NixOS/nix/pull/2698#issuecomment-615135303
+
+Pass --static flag to pkg-config when necessary
+---
+ configure.ac          | 22 ++++++++++++----------
+ mk/libraries.mk       | 32 +++++++++++++++++++++++++++++++-
+ src/libexpr/local.mk  |  2 ++
+ src/libstore/local.mk |  2 ++
+ 4 files changed, 47 insertions(+), 11 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index a52830b3..38febe02 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -158,6 +158,18 @@ AX_BOOST_BASE([1.66], [CXXFLAGS="$BOOST_CPPFLAGS $CXXFLAGS"], [AC_MSG_ERROR([Nix
+ LDFLAGS="$BOOST_LDFLAGS $LDFLAGS"
+ 
+ 
++PKG_PROG_PKG_CONFIG
++
++AC_ARG_ENABLE(shared, AC_HELP_STRING([--enable-shared],
++  [Build shared libraries for Nix [default=yes]]),
++  shared=$enableval, shared=yes)
++if test "$shared" = yes; then
++  AC_SUBST(BUILD_SHARED_LIBS, 1, [Whether to build shared libraries.])
++else
++  AC_SUBST(BUILD_SHARED_LIBS, 0, [Whether to build shared libraries.])
++  PKG_CONFIG="$PKG_CONFIG --static"
++fi
++
+ # Look for OpenSSL, a required dependency.
+ PKG_CHECK_MODULES([OPENSSL], [libcrypto], [CXXFLAGS="$OPENSSL_CFLAGS $CXXFLAGS"])
+ 
+@@ -290,16 +302,6 @@ AC_ARG_WITH(sandbox-shell, AC_HELP_STRING([--with-sandbox-shell=PATH],
+   sandbox_shell=$withval)
+ AC_SUBST(sandbox_shell)
+ 
+-AC_ARG_ENABLE(shared, AC_HELP_STRING([--enable-shared],
+-  [Build shared libraries for Nix [default=yes]]),
+-  shared=$enableval, shared=yes)
+-if test "$shared" = yes; then
+-  AC_SUBST(BUILD_SHARED_LIBS, 1, [Whether to build shared libraries.])
+-else
+-  AC_SUBST(BUILD_SHARED_LIBS, 0, [Whether to build shared libraries.])
+-fi
+-
+-
+ # Expand all variables in config.status.
+ test "$prefix" = NONE && prefix=$ac_default_prefix
+ test "$exec_prefix" = NONE && exec_prefix='${prefix}'
+diff --git a/mk/libraries.mk b/mk/libraries.mk
+index 307e29b9..bb9c3400 100644
+--- a/mk/libraries.mk
++++ b/mk/libraries.mk
+@@ -50,6 +50,11 @@ endif
+ #   target andwill not be listed in the make help output. This is
+ #   useful for libraries built solely for testing, for example.
+ #
++# - $(1)_WHOLE_ARCHIVE: if defined, the whole archive of the static
++#   library will be used. This is necessary when using global
++#   constructors such as setting up a RegisterStoreImplementation.
++#   Only applies when BUILD_SHARED_LIBS=0.
++#
+ # - BUILD_SHARED_LIBS: if equal to ‘1’, a dynamic library will be
+ #   built, otherwise a static library.
+ define build-library
+@@ -127,7 +132,32 @@ define build-library
+     $$($(1)_PATH): $$($(1)_OBJS) | $$(_d)/
+ 	$(trace-ar) $(AR) crs $$@ $$?
+ 
+-    $(1)_LDFLAGS_USE += $$($(1)_PATH) $$($(1)_LDFLAGS)
++    # Special care is needed to support C++ global initializers, used
++    # in RegisterStoreImplementation. The .init section needs to be in
++    # the linked executable for it find the registered stores. On
++    # Linux systems systems, wrap the linked object archive with whole
++    # archive flags. Note that --whole-archive is only supported with
++    # the bfd, gold, and lld linkers. The macOS ld64 linker has a
++    # -force_load that seems to work similarly, but takes one argument
++    # instead of a group of arguments.
++
++    ifdef $(1)_WHOLE_ARCHIVE
++      ifeq ($(OS), Linux)
++        $(1)_LDFLAGS_USE += -Wl,--whole-archive
++      else ifeq ($(OS), Darwin)
++        $(1)_LDFLAGS_USE += -Wl,-force_load
++      endif
++    endif
++
++    $(1)_LDFLAGS_USE += $$($(1)_PATH)
++
++    ifdef $(1)_WHOLE_ARCHIVE
++      ifeq ($(OS), Linux)
++        $(1)_LDFLAGS_USE += -Wl,--no-whole-archive
++      endif
++    endif
++
++    $(1)_LDFLAGS_USE += $$($(1)_LDFLAGS)
+ 
+     $(1)_INSTALL_PATH := $$(libdir)/$$($(1)_NAME).a
+ 
+diff --git a/src/libexpr/local.mk b/src/libexpr/local.mk
+index ccd5293e..e86290fa 100644
+--- a/src/libexpr/local.mk
++++ b/src/libexpr/local.mk
+@@ -13,6 +13,8 @@ ifneq ($(OS), FreeBSD)
+  libexpr_LDFLAGS += -ldl
+ endif
+ 
++libexpr_WHOLE_ARCHIVE = 1
++
+ # The dependency on libgc must be propagated (i.e. meaning that
+ # programs/libraries that use libexpr must explicitly pass -lgc),
+ # because inline functions in libexpr's header files call libgc.
+diff --git a/src/libstore/local.mk b/src/libstore/local.mk
+index d690fea2..b268765b 100644
+--- a/src/libstore/local.mk
++++ b/src/libstore/local.mk
+@@ -13,6 +13,8 @@ ifneq ($(OS), FreeBSD)
+  libstore_LDFLAGS += -ldl
+ endif
+ 
++libstore_WHOLE_ARCHIVE = 1
++
+ libstore_FILES = sandbox-defaults.sb sandbox-minimal.sb sandbox-network.sb
+ 
+ $(foreach file,$(libstore_FILES),$(eval $(call install-data-in,$(d)/$(file),$(datadir)/nix/sandbox)))
+-- 
+2.26.2
+
