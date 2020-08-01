@@ -78,6 +78,18 @@ in
         });
       };
 
+      installCmd = mkOption {
+        type = types.str;
+        readOnly = true;
+        internal = true;
+        description = ''
+          Contains the builder command used to install the bootloader, built for
+          the host architecture and honoring all options except the
+          `-c <path-to-default-configuration>` argument. Used to build other
+          bootloaders on top of this one.
+        '';
+      };
+
       populateCmd = mkOption {
         type = types.str;
         readOnly = true;
@@ -100,14 +112,17 @@ in
       #!${pkgs.runtimeShell}
       set -e
     '' + flip concatMapStrings cfg.mirroredBoots (args: ''
-      ${builder} ${builderArgs} -d '${args.path}' -c "$@"
+      ${cfg.installCmd} -d '${args.path}' -c "$@"
     ''));
   in
     mkIf cfg.enable {
       system.build.installBootLoader = installBootLoader;
       system.boot.loader.id = "generic-extlinux-compatible";
 
-      boot.loader.generic-extlinux-compatible.populateCmd = "${populateBuilder} ${builderArgs}";
+      boot.loader.generic-extlinux-compatible = {
+        installCmd = "${builder} ${builderArgs}";
+        populateCmd = "${populateBuilder} ${builderArgs}";
+      };
 
       assertions = [
         {
