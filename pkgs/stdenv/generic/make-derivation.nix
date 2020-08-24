@@ -242,7 +242,7 @@ in rec {
           inherit doCheck doInstallCheck;
 
           inherit outputs;
-        } // lib.optionalAttrs (stdenv.hostPlatform != stdenv.buildPlatform) {
+
           cmakeFlags =
             (/**/ if lib.isString cmakeFlags then [cmakeFlags]
              else if cmakeFlags == null      then []
@@ -255,6 +255,7 @@ in rec {
           ++ lib.optional (stdenv.buildPlatform.uname.processor != null) "-DCMAKE_HOST_SYSTEM_PROCESSOR=${stdenv.buildPlatform.uname.processor}"
           ++ lib.optional (stdenv.buildPlatform.uname.release != null) "-DCMAKE_HOST_SYSTEM_VERSION=${stdenv.buildPlatform.uname.release}";
 
+        } // lib.optionalAttrs (stdenv.hostPlatform != stdenv.buildPlatform) {
           mesonFlags = if mesonFlags == null then null else let
             # See https://mesonbuild.com/Reference-tables.html#cpu-families
             cpuFamily = platform: with platform;
