@@ -44,7 +44,7 @@ in {
           # Sync snapshot taken by sanoid
           "pool/sanoid" = {
             target = "root@target:pool/sanoid";
-            extraArgs = [ "--no-sync-snap" ];
+            extraArgs = [ "--no-sync-snap" "--create-bookmark" ];
           };
           # Take snapshot and sync
           "pool/syncoid".target = "root@target:pool/syncoid";
@@ -92,7 +92,7 @@ in {
     # Sync snapshots
     target.wait_for_open_port(22)
     source.succeed("touch /mnt/pool/syncoid/test.txt")
-    source.systemctl("start --wait syncoid.service")
+    source.systemctl("start --wait syncoid-pool-test.service")
     target.succeed("cat /mnt/pool/sanoid/test.txt")
     target.succeed("cat /mnt/pool/syncoid/test.txt")
   '';
