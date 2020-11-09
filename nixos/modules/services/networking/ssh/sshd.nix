@@ -479,7 +479,11 @@ in
             socketConfig.Accept = true;
           };
 
-        services."sshd@" = service;
+        services."sshd@" = mkMerge [
+          service
+          # Don't kill existing connections
+          { restartIfChanged = false; }
+        ];
 
       } else {
 
