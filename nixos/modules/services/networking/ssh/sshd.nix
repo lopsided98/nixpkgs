@@ -637,7 +637,11 @@ in
             socketConfig.TriggerLimitIntervalSec = 0;
           };
 
-        services."sshd@" = service;
+        services."sshd@" = mkMerge [
+          service
+          # Don't kill existing connections
+          { restartIfChanged = false; }
+        ];
 
       } else {
 
