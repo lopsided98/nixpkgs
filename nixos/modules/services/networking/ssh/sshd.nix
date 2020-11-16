@@ -477,6 +477,8 @@ in
             else
               cfg.ports;
             socketConfig.Accept = true;
+            # Prevent brute-force attacks from shutting down socket
+            socketConfig.TriggerLimitIntervalSec = 0;
           };
 
         services."sshd@" = mkMerge [
