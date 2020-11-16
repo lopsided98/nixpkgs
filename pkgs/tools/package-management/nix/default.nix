@@ -226,6 +226,18 @@ in rec {
 
     inherit storeDir stateDir confDir boehmgc;
 
+    patches = [
+      # BoehmGCStackAllocator: ignore stack protection page https://github.com/NixOS/nix/pull/4264
+      (fetchpatch {
+        url = "https://github.com/hercules-ci/nix/commit/fc84ba30cc68ff5c8de29bb11d3572a197a08ce2.patch";
+        sha256 = "144ya6vf4brl4bb2bjbvihrcqr9fiwf8pvylgz2zlhbi6q710zq7";
+      })
+      # BoehmGCStackAllocator: disable GC with coroutines https://github.com/NixOS/nix/pull/4264
+      (fetchpatch {
+        url = "https://github.com/hercules-ci/nix/commit/ced7f31ac252ebbeb8610dcb329ee09e84aca8aa.patch";
+        sha256 = "0pfhbqvlyr54fygnan0iyzcpxga4j3sdp65khqbn1vbvlk2smjvp";
+      })
+    ];
   });
 
 }
