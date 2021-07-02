@@ -1,7 +1,9 @@
 {
   stdenv,
   fetchurl,
+  fetchpatch,
   lib,
+  autoreconfHook,
   tls ? true,
   gnutls ? null,
 }:
@@ -18,6 +20,16 @@ stdenv.mkDerivation rec {
     sha256 = "0md8cf90fl2yf3zh9njjy42a673v4j4ygyq95xg7fzkygdigm1lq";
   };
 
+  patches = [
+    # Fix cross-compilation
+    # https://github.com/bruceg/nullmailer/pull/78
+    (fetchpatch {
+      url = "https://github.com/bruceg/nullmailer/commit/ab5b5002bba2f99429193bb475822b38ea7a6e88.patch";
+      sha256 = "0appxapilyzmx76labh5vq2lldfqzyr9b560f7s4vx730r1da6vg";
+    })
+  ];
+
+  nativeBuildInputs = [ autoreconfHook ];
   buildInputs = lib.optional tls gnutls;
 
   configureFlags = [
