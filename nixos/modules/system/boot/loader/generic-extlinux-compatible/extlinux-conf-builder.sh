@@ -5,7 +5,7 @@ shopt -s nullglob
 export PATH='@path@'
 
 usage() {
-    echo "usage: $0 -t <timeout> -c <path-to-default-configuration> [-d <boot-dir>] [-g <num-generations>] [-n <dtbName>] [-r]" >&2
+    echo "usage: $0 -t <timeout> -c <path-to-default-configuration> [-d <boot-dir>] [-g <num-generations>] [-n <dtbName>] [-r] [-k]" >&2
     exit 1
 }
 
@@ -13,8 +13,9 @@ timeout=                # Timeout in centiseconds
 default=                # Default configuration
 target=/boot            # Target directory
 numGenerations=0        # Number of other generations to include in the menu
+copyKernels=            # Whether to copy kernel, initrd and DTB to target directory
 
-while getopts "t:c:d:g:n:r" opt; do
+while getopts "t:c:d:g:n:r:k" opt; do
     case "$opt" in
         t) # U-Boot interprets '0' as infinite and negative as instant boot
             if [ "$OPTARG" -lt 0 ]; then
@@ -30,6 +31,7 @@ while getopts "t:c:d:g:n:r" opt; do
         g) numGenerations="$OPTARG" ;;
         n) dtbName="$OPTARG" ;;
         r) noDeviceTree=1 ;;
+        k) copyKernels=1 ;;
         \?) usage ;;
     esac
 done
@@ -52,6 +54,13 @@ declare -A filesCopied
 copyToKernelsDir() {
     local src=$(readlink -f "$1")
     local dst="$target/nixos/$(cleanName $src)"
+
+    # No-op if copying kernels is disabled
+    if [ -z "$copyKernels" ]; then
+      result="$src";
+      return
+    fi
+
     # Don't copy the file if $dst already exists.  This means that we
     # have to create $dst atomically to prevent partially copied
     # kernels or initrd if this script is ever interrupted.
@@ -61,7 +70,7 @@ copyToKernelsDir() {
         mv $dstTmp $dst
     fi
     filesCopied[$dst]=1
-    result=$dst
+    result="../nixos/$(basename "$dst")"
 }
 
 # Copy its kernel, initrd and dtbs to $target/nixos, and echo out an
@@ -94,8 +103,8 @@ addEntry() {
     else
         echo "  MENU LABEL NixOS - Configuration $tag ($timestamp - $nixosLabel)"
     fi
-    echo "  LINUX ../nixos/$(basename $kernel)"
-    echo "  INITRD ../nixos/$(basename $initrd)"
+    echo "  LINUX $kernel"
+    echo "  INITRD $initrd"
     echo "  APPEND init=$path/init $extraParams"
 
     if [ -n "$noDeviceTree" ]; then
@@ -105,9 +114,9 @@ addEntry() {
     if [ -d "$dtbDir" ]; then
         # if a dtbName was specified explicitly, use that, else use FDTDIR
         if [ -n "$dtbName" ]; then
-            echo "  FDT ../nixos/$(basename $dtbs)/${dtbName}"
+            echo "  FDT $dtbs/${dtbName}"
         else
-            echo "  FDTDIR ../nixos/$(basename $dtbs)"
+            echo "  FDTDIR $dtbs"
         fi
     else
         if [ -n "$dtbName" ]; then
