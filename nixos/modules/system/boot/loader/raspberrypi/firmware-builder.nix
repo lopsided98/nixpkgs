@@ -14,8 +14,13 @@ let
         pkgs.ubootRaspberryPi3_64bit
       else
         pkgs.ubootRaspberryPi3_32bit
+    else if version == 4 then
+      if stdenv.hostPlatform.isAarch64 then
+        pkgs.ubootRaspberryPi4_64bit
+      else
+        pkgs.ubootRaspberryPi4_32bit
     else
-      throw "U-Boot is not yet supported on the Raspberry Pi 4.";
+      throw "U-Boot is not yet supported on the Raspberry Pi ${toString version}.";
 in
 substituteAll {
   src = ./firmware-builder.sh;
