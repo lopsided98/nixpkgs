@@ -11,7 +11,6 @@
   libnl,
   protobuf,
   protobufc,
-  shadow,
   installShellFiles,
 }:
 
@@ -45,8 +44,12 @@ stdenv.mkDerivation rec {
 
   env.NIX_CFLAGS_COMPILE = toString [ "-Wno-error" ];
 
+  # newuidmap and newgidmap must be setuid root, so they can't be referenced
+  # directly from the shadow package. Instead, use execvpe() to find them on
+  # PATH.
   preBuild = ''
-    makeFlagsArray+=(USER_DEFINES='-DNEWUIDMAP_PATH=${shadow}/bin/newuidmap -DNEWGIDMAP_PATH=${shadow}/bin/newgidmap')
+    substituteInPlace subproc.cc --replace 'execve(' 'execvpe('
+    makeFlagsArray+=(USER_DEFINES='-DNEWUIDMAP_PATH=newuidmap -DNEWGIDMAP_PATH=newgidmap')
   '';
 
   installPhase = ''
