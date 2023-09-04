@@ -69,8 +69,7 @@ stdenv.mkDerivation rec {
   ] ++ lib.optionals pythonSupport (with python.pkgs; [
     absl-py
     pybind11
-    # FIXME: or-tools support for non-vendored pybind11_protobuf is broken
-    # pybind11-protobuf
+    pybind11-protobuf
     setuptools
     wheel
   ]);
@@ -112,8 +111,5 @@ stdenv.mkDerivation rec {
     '';
     maintainers = with maintainers; [ andersk ];
     platforms = with platforms; linux ++ darwin;
-    # Requires pybind11_protobuf, which can't currently be installed as a
-    # system dependency.
-    broken = pythonSupport;
   };
 }
