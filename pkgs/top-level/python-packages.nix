@@ -7781,7 +7781,10 @@ self: super: with self; {
 
   ormar = callPackage ../development/python-modules/ormar { };
 
-  ortools = (toPythonModule (pkgs.or-tools.override { inherit (self) python; })).python;
+  ortools = (toPythonModule (pkgs.or-tools.override {
+    pythonSupport = true;
+    inherit (self) python;
+  })).python;
 
   orvibo = callPackage ../development/python-modules/orvibo { };
 

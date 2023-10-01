@@ -16,6 +16,7 @@
 , swig4
 , unzip
 , zlib
+, pythonSupport ? true
 }:
 
 stdenv.mkDerivation rec {
@@ -55,47 +56,52 @@ stdenv.mkDerivation rec {
 
   cmakeFlags = [
     "-DBUILD_DEPS=OFF"
+    "-DUSE_GLPK=ON"
+    "-DUSE_SCIP=OFF"
+  ] ++ lib.optionals pythonSupport [
     "-DBUILD_PYTHON=ON"
     "-DBUILD_pybind11=OFF"
     "-DFETCH_PYTHON_DEPS=OFF"
-    "-DUSE_GLPK=ON"
-    "-DUSE_SCIP=OFF"
     "-DPython3_EXECUTABLE=${python.pythonForBuild.interpreter}"
   ] ++ lib.optionals stdenv.isDarwin [ "-DCMAKE_MACOSX_RPATH=OFF" ];
   nativeBuildInputs = [
     cmake
-    ensureNewerSourcesForZipFilesHook
     pkg-config
+    protobuf
+  ] ++ lib.optionals pythonSupport ([
+    ensureNewerSourcesForZipFilesHook
+    unzip
     python.pythonForBuild
     swig4
-    unzip
   ] ++ (with python.pythonForBuild.pkgs; [
     pip
     mypy-protobuf
-  ]);
+  ]));
   buildInputs = [
     bzip2
     cbc
     eigen
     glpk
-    python.pkgs.absl-py
-    python.pkgs.pybind11
-    python.pkgs.setuptools
-    python.pkgs.wheel
     re2
     zlib
-  ];
+  ] ++ lib.optionals pythonSupport (with python.pkgs; [
+    absl-py
+    pybind11
+    setuptools
+    wheel
+  ]);
   propagatedBuildInputs = [
     abseil-cpp
     protobuf
+  ] ++ lib.optionals pythonSupport [
     (python.pkgs.protobuf.override { protobuf = protobuf; })
     python.pkgs.numpy
   ];
-  nativeCheckInputs = [
-    python.pkgs.matplotlib
-    python.pkgs.pandas
-    python.pkgs.virtualenv
-  ];
+  nativeCheckInputs = lib.optionals pythonSupport (with python.pkgs; [
+    matplotlib
+    pandas
+    virtualenv
+  ]);
 
   doCheck = true;
 
@@ -106,10 +112,11 @@ stdenv.mkDerivation rec {
   installPhase = ''
     cmake . -DBUILD_EXAMPLES=OFF -DBUILD_PYTHON=OFF -DBUILD_SAMPLES=OFF
     cmake --install .
+  '' + lib.optionalString pythonSupport ''
     pip install --prefix="$python" python/
   '';
 
-  outputs = [ "out" "python" ];
+  outputs = [ "out" ] ++ lib.optional pythonSupport "python";
 
   meta = with lib; {
     homepage = "https://github.com/google/or-tools";
