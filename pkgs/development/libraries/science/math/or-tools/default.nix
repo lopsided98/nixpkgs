@@ -5,7 +5,6 @@
 , eigen
 , ensureNewerSourcesForZipFilesHook
 , fetchFromGitHub
-, fetchpatch
 , glpk
 , lib
 , pkg-config
@@ -16,37 +15,19 @@
 , swig4
 , unzip
 , zlib
-, pythonSupport ? true
+, pythonSupport ? false
 }:
 
 stdenv.mkDerivation rec {
   pname = "or-tools";
-  version = "9.4";
+  version = "9.7";
 
   src = fetchFromGitHub {
     owner = "google";
     repo = "or-tools";
     rev = "v${version}";
-    sha256 = "sha256-joWonJGuxlgHhXLznRhC1MDltQulXzpo4Do9dec1bLY=";
+    hash = "sha256-eHukf6TbY2dx7iEf8WfwfWsjDEubPtRO02ju0kHtASo=";
   };
-  patches = [
-    # Disable test that requires external input: https://github.com/google/or-tools/issues/3429
-    (fetchpatch {
-      url = "https://github.com/google/or-tools/commit/7072ae92ec204afcbfce17d5360a5884c136ce90.patch";
-      hash = "sha256-iWE+atp308q7pC1L1FD6sK8LvWchZ3ofxvXssguozbM=";
-    })
-    # Fix test that broke in parallel builds: https://github.com/google/or-tools/issues/3461
-    (fetchpatch {
-      url = "https://github.com/google/or-tools/commit/a26602f24781e7bfcc39612568aa9f4010bb9736.patch";
-      hash = "sha256-gM0rW0xRXMYaCwltPK0ih5mdo3HtX6mKltJDHe4gbLc=";
-    })
-    # Backport fix in cmake test configuration where pip installs newer version from PyPi over local build,
-    #  breaking checkPhase: https://github.com/google/or-tools/issues/3260
-    (fetchpatch {
-      url = "https://github.com/google/or-tools/commit/edd1544375bd55f79168db315151a48faa548fa0.patch";
-      hash = "sha256-S//1YM3IoRCp3Ghg8zMF0XXgIpVmaw4gH8cVb9eUbqM=";
-    })
-  ];
 
   # or-tools normally attempts to build Protobuf for the build platform when
   # cross-compiling. Instead, just tell it where to find protoc.
@@ -61,6 +42,7 @@ stdenv.mkDerivation rec {
   ] ++ lib.optionals pythonSupport [
     "-DBUILD_PYTHON=ON"
     "-DBUILD_pybind11=OFF"
+    "-DBUILD_pybind11_protobuf=OFF"
     "-DFETCH_PYTHON_DEPS=OFF"
     "-DPython3_EXECUTABLE=${python.pythonForBuild.interpreter}"
   ] ++ lib.optionals stdenv.isDarwin [ "-DCMAKE_MACOSX_RPATH=OFF" ];
@@ -87,6 +69,8 @@ stdenv.mkDerivation rec {
   ] ++ lib.optionals pythonSupport (with python.pkgs; [
     absl-py
     pybind11
+    # FIXME: or-tools support for non-vendored pybind11_protobuf is broken
+    # pybind11-protobuf
     setuptools
     wheel
   ]);
@@ -98,9 +82,11 @@ stdenv.mkDerivation rec {
     python.pkgs.numpy
   ];
   nativeCheckInputs = lib.optionals pythonSupport (with python.pkgs; [
-    matplotlib
-    pandas
     virtualenv
+    pandas
+    matplotlib
+    pytest
+    scipy
   ]);
 
   doCheck = true;
@@ -126,5 +112,8 @@ stdenv.mkDerivation rec {
     '';
     maintainers = with maintainers; [ andersk ];
     platforms = with platforms; linux ++ darwin;
+    # Requires pybind11_protobuf, which can't currently be installed as a
+    # system dependency.
+    broken = pythonSupport;
   };
 }
