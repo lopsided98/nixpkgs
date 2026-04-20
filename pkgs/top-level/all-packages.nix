@@ -4548,11 +4548,13 @@ with pkgs;
       );
     in
     callPackage ../build-support/rust/build-rust-crate (
-      { }
+      {
+        # Optimization to avoid building cross toolchain if not necessary
+        inherit (if targetAlreadyIncluded then pkgsBuildBuild else pkgsBuildHost) rustc cargo;
+      }
       // lib.optionalAttrs (stdenv.hostPlatform.libc == null) {
         stdenv = stdenvNoCC; # Some build targets without libc will fail to evaluate with a normal stdenv.
       }
-      // lib.optionalAttrs targetAlreadyIncluded { inherit (pkgsBuildBuild) rustc cargo; } # Optimization.
     );
   buildRustCrateHelpers = callPackage ../build-support/rust/build-rust-crate/helpers.nix { };
 
