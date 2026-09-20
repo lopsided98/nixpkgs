@@ -7,6 +7,8 @@
   fetchurl,
   freeipmi,
   gd,
+  gnugrep,
+  gnused,
   i2c-tools,
   libgpiod_1,
   libmodbus,
@@ -18,9 +20,9 @@
   openssl,
   pkg-config,
   replaceVars,
+  runtimeShell,
   systemd,
   udev,
-  gnused,
   withApcModbus ? false,
   fetchFromGitHub,
 }:
@@ -105,14 +107,17 @@ stdenv.mkDerivation (finalAttrs: {
     "--with-ssl"
     "--without-powerman" # Until we have it ...
     "--with-pynut=app" # avoid attempts to install python modules to python store path
-    "--with-systemdsystempresetdir=$(out)/lib/systemd/system-preset"
-    "--with-systemdsystemunitdir=$(out)/lib/systemd/system"
-    "--with-systemdshutdowndir=$(out)/lib/systemd/system-shutdown"
-    "--with-systemdtmpfilesdir=$(out)/lib/tmpfiles.d"
-    "--with-udev-dir=$(out)/etc/udev"
+    "--with-systemdsystempresetdir=${placeholder "out"}/lib/systemd/system-preset"
+    "--with-systemdsystemunitdir=${placeholder "out"}/lib/systemd/system"
+    "--with-systemdshutdowndir=${placeholder "out"}/lib/systemd/system-shutdown"
+    "--with-systemdtmpfilesdir=${placeholder "out"}/lib/tmpfiles.d"
+    "--with-udev-dir=${placeholder "out"}/etc/udev"
     "--with-user=nutmon"
     "--with-group=nutmon"
   ]
+  ++ (lib.lists.optionals stdenv.hostPlatform.isLinux [
+    "SYSTEMD_TMPFILES_PROGRAM=${systemd}/bin/systemd-tmpfiles"
+  ])
   ++ (lib.lists.optionals withApcModbus [
     "--with-modbus+usb"
   ]);
@@ -131,19 +136,43 @@ stdenv.mkDerivation (finalAttrs: {
     "sbin"
   ];
 
-  postInstall = lib.optionalString stdenv.hostPlatform.isLinux ''
-    substituteInPlace $out/lib/systemd/system-shutdown/nutshutdown \
-      --replace /bin/sed "${gnused}/bin/sed" \
-      --replace /bin/sleep "${coreutils}/bin/sleep" \
-      --replace /bin/systemctl "${systemd}/bin/systemctl"
+  postFixup = lib.optionalString stdenv.hostPlatform.isLinux ''
+    patchShebangs \
+      "$out/libexec/nut-driver-enumerator.sh" \
+      "$out/lib/systemd/system-shutdown/nutshutdown"
 
-    for file in system/{nut-monitor.service,nut-driver-enumerator.service,nut-server.service,nut-driver@.service} system-shutdown/nutshutdown; do
-      substituteInPlace $out/lib/systemd/$file \
-        --replace "$out/etc/nut.conf" "/etc/nut/nut.conf"
-    done
+    substituteInPlace \
+      "$out/bin/upsdrvsvcctl" \
+      "$out/libexec/nut-driver-enumerator.sh" \
+      "$out/lib/systemd/system-shutdown/nutshutdown" \
+      "$out/lib/systemd/system/nut-driver-enumerator-daemon-activator.service" \
+      --replace-fail /bin/systemctl '${systemd}/bin/systemctl'
+
+    substituteInPlace "$out/lib/systemd/system-shutdown/nutshutdown" \
+      --replace-fail /bin/sleep '${coreutils}/bin/sleep'
+
+    substituteInPlace "$out/lib/systemd/system/nut-logger.service" \
+      --replace-fail /bin/test '${coreutils}/bin/test'
+
+    substituteInPlace \
+      "$out"/lib/systemd/system/{nut-driver-enumerator-daemon.service,nut-driver@.service,nut-logger.service} \
+      --replace-fail /bin/kill '${coreutils}/bin/kill'
+
+    substituteInPlace "$out/lib/systemd/system/nut-server.service" \
+      --replace-fail /bin/grep '${gnugrep}/bin/grep'
+
+    substituteInPlace "$out/lib/systemd/system/nut-driver@.service" \
+      --replace-fail /bin/sh '${runtimeShell}'
+
+    substituteInPlace \
+      "$out"/lib/systemd/{system/{nut-monitor.service,nut-driver-enumerator.service,nut-server.service,nut-driver@.service},system-shutdown/nutshutdown} \
+      --replace-fail "$out/etc/nut.conf" "/etc/nut/nut.conf"
 
     substituteInPlace $out/lib/systemd/system/nut-driver-enumerator.path \
-      --replace "$out/etc/ups.conf" "/etc/nut/ups.conf"
+      --replace-fail "$out/etc/ups.conf" "/etc/nut/ups.conf"
+
+    wrapProgram "$out/libexec/nut-driver-enumerator.sh" \
+      --prefix PATH : "${lib.makeBinPath [ coreutils gnugrep gnused ]}"
 
     # Suspicious/overly broad rule, remove it until we know better
     rm $out/etc/udev/rules.d/52-nut-ipmipsu.rules
