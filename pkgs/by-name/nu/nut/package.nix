@@ -107,6 +107,10 @@ stdenv.mkDerivation (finalAttrs: {
     "--with-ssl"
     "--without-powerman" # Until we have it ...
     "--with-pynut=app" # avoid attempts to install python modules to python store path
+    "--with-confdir=/etc/nut"
+    "--with-pidpath=/run/nut"
+    "--with-altpidpath=/run/nut"
+    "--with-statepath=/var/lib/nut"
     "--with-systemdsystempresetdir=${placeholder "out"}/lib/systemd/system-preset"
     "--with-systemdsystemunitdir=${placeholder "out"}/lib/systemd/system"
     "--with-systemdshutdowndir=${placeholder "out"}/lib/systemd/system-shutdown"
