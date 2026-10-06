@@ -67,6 +67,15 @@ stdenv.mkDerivation (finalAttrs: {
   postPatch = ''
     substituteInPlace srp_daemon/srp_daemon.sh.in \
       --replace /bin/rm rm
+  ''
+  # As of CMake 4.4.3, when cross-compiling, if find_package(Python) is called
+  # with the Interpreter and Development components, the Python package must be for the host
+  # platform. This is a regression in CMake 4.4.3, and this behavior is not intended to occur ThWe don't build the Python
+  # bindings, and therefore only need Python at build time, so just remove the
+  # Development component to avoid this problem.
+  + lib.optionalString (stdenv.hostPlatform != stdenv.buildPlatform) ''
+    substituteInPlace CMakeLists.txt \
+      --replace-fail "OPTIONAL_COMPONENTS Development" ""
   '';
 
   postInstall = ''
